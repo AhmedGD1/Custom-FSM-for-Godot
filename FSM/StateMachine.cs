@@ -929,3 +929,4 @@ public class StateMachine<T> where T : Enum
     }
     
     /// <summary>
+}
