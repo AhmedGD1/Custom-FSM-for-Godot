@@ -23,7 +23,6 @@ var global_data: Dictionary[String, Variant] = {}
 
 var global_transitions: Array[Transition] = []
 var cached_sorted_transitions: Array[Transition] = []
-var active_transitions: Array[Transition] = []
 var pending_transitions: Array[int] = []
 
 var event_listeners: Dictionary[String, Array] = {}
@@ -73,8 +72,6 @@ func remove_state(id: int) -> bool:
 		push_warning("State with id: (%s) does not exist" % id)
 		return false
 	
-	states.erase(id)
-	
 	if initial_id == id:
 		initialized = false
 	
@@ -90,6 +87,7 @@ func remove_state(id: int) -> bool:
 	states[id].transitions = states[id].transitions.filter(func(t: Transition): return t.to != id)
 	global_transitions = global_transitions.filter(func(t: Transition): return t.to != id)
 	
+	states.erase(id)
 	sort_transitions()
 	return true
 
@@ -136,8 +134,7 @@ func try_change_state(id: int, condition: Callable = Callable(), data: Variant =
 		return false
 	
 	if data != null:
-		# set data
-		pass
+		set_data(TRANSITION_PER_DATA, data)
 	_change_state_internal(id)
 	return true
 
@@ -164,36 +161,33 @@ func _change_state_internal(id, ignore_exit: bool = false) -> void:
 	var value = states[id]
 	is_transitioning = true
 	
-	var error_occurred = false
-	
 	var can_exit = !ignore_exit && current_state != null && !current_state.is_locked()
 	if can_exit:
-		if !_safe_call(current_state.exit):
-			error_occurred = true
+		_safe_call(current_state.exit)
 	
-	if !error_occurred:
-		last_state_time = state_time
-		state_time = 0.0
-		
-		if current_state != null:
-			previous_id = current_state.id
-			has_previous_state = true
-		
-		current_state = value
-		_safe_call(current_state.enter)
-		
-		sort_transitions()
-		
-		if initialized:
-			state_changed.emit(previous_id, current_state.id)
-		
-		while pending_transitions.size() > 0:
-			var next_id = pending_transitions.pop_front()
-			is_transitioning = false
-			_change_state_internal(next_id)
-			is_transitioning = true
+	last_state_time = state_time
+	state_time = 0.0
 	
-	is_transitioning = false
+	if current_state != null:
+		previous_id = current_state.id
+		has_previous_state = true
+	
+	current_state = value
+	_safe_call(current_state.enter)
+	
+	sort_transitions()
+	
+	if initialized:
+		state_changed.emit(previous_id, current_state.id)
+	
+	# Process pending transitions one at a time
+	if pending_transitions.size() > 0:
+		var next_id = pending_transitions.pop_front()
+		is_transitioning = false
+		_change_state_internal(next_id)
+	else:
+		is_transitioning = false
+	
 	remove_global_data(TRANSITION_PER_DATA)
 
 func _safe_call(callable: Callable) -> bool:
@@ -212,6 +206,7 @@ func add_transition(from: int, to: int) -> Transition:
 		return null
 	
 	var transition: Transition = states[from].add_transition(to)
+	
 	sort_transitions()
 	return transition
 
@@ -293,10 +288,7 @@ func remove_event_listener(event_name: String, callback: Callable) -> void:
 			event_listeners.erase(event_name)
 
 func _process_events() -> void:
-	if current_state == null:
-		return
-	
-	while !pending_events.is_empty():
+	while pending_events.size() > 0:
 		var event_name: String = pending_events.pop_front()
 		
 		if event_listeners.has(event_name):
@@ -307,8 +299,8 @@ func _process_events() -> void:
 				if listeners[i].is_valid():
 					listeners[i].call()
 			
-			if !cached_sorted_transitions.is_empty():
-				_check_event_transitions(event_name)
+		if cached_sorted_transitions.size() > 0:
+			_check_event_transitions(event_name)
 
 func _check_event_transitions(event_name: String) -> void:
 	if is_processing_event:
@@ -316,36 +308,24 @@ func _check_event_transitions(event_name: String) -> void:
 	
 	is_processing_event = true
 	
-	for transition in cached_sorted_transitions:
+	for transition: Transition in cached_sorted_transitions:
 		if transition.event_name == null || transition.event_name.is_empty():
 			continue
 		
 		if transition.event_name != event_name:
 			continue
 		
-		var required_time = transition.override_min_time if transition.override_min_time > 0.0 else current_state.min_time
-		var time_requirement_met = state_time > required_time || transition.force_instant_transition
+		var required_time: float = transition.override_min_time if transition.override_min_time > 0.0 else current_state.min_time
+		var time_requirement_met: bool = state_time > required_time || transition.force_instant_transition
 		
-		var guard_passed = true
-		if transition.guard.is_valid():
-			guard_passed = transition.guard.call()
-		
-		if time_requirement_met && guard_passed:
-			var condition_passed = true
-			if transition.condition.is_valid():
-				condition_passed = transition.condition.call()
+		if time_requirement_met:
+			_change_state_internal(transition.to)
+			transition_triggered.emit(transition.from, transition.to)
+			if transition.triggered.is_valid(): transition.triggered.call()
 			
-			if condition_passed:
-				_change_state_internal(transition.to)
-				
-				if transition.triggered.is_valid():
-					transition.triggered.call()
-				
-				transition_triggered.emit(transition.from, transition.to)
-				
-				is_processing_event = false
-				return
-	
+			is_processing_event = false
+			return
+		
 	is_processing_event = false
 
 func process(mode: StateMachine.ProcessMode, delta: float) -> void:
@@ -393,7 +373,7 @@ func _check_transitions() -> void:
 		_check_transition_loop()
 
 func _check_transition_loop() -> void:
-	for transition: Transition in active_transitions:
+	for transition: Transition in cached_sorted_transitions:
 		if transition.guard.is_valid() && !transition.guard.call():
 			continue
 		
@@ -418,10 +398,6 @@ func _rebuild_transition_cache() -> void:
 	cached_sorted_transitions.append_array(global_transitions)
 	cached_sorted_transitions.sort_custom(Transition.compare)
 	
-	active_transitions.clear()
-	for transition in cached_sorted_transitions:
-		if transition.event_name == null or transition.event_name.is_empty():
-			active_transitions.append(transition)
 	transition_dirty = false
 
 func set_data(key: String, value: Variant) -> bool:
@@ -496,7 +472,10 @@ func get_previous_id() -> int:
 	return previous_id if has_previous_state else -1
 
 func get_state_name(id: int) -> String:
-	return states_enum.keys()[id]
+	for key in states_enum.keys():
+		if states_enum[key] == id:
+			return key
+	return "Unknown"
 
 func min_time_exceeded() -> bool:
 	return state_time > current_state.min_time if current_state != null else false
