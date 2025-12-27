@@ -6,26 +6,26 @@ namespace Godot.FSM;
 public class State<T> where T : Enum
 {
     public T Id { get; private set; }
-    public T RestartId { get; private set; }
+    public T TimeoutTargetId { get; private set; }
 
     public List<Transition<T>> Transitions { get; set; } = new();
 
     public float MinTime { get; private set; }
-    public float Timeout { get; private set; } = -1f;
+    public float Timeout { get; private set; } = 1f;
 
-    public Action<double> Update { get; private set; }
+    public Action<float> Update { get; private set; }
     public Action Enter { get; private set; }
     public Action Exit { get; private set; }
-    public Action Callback { get; private set; }
+    public Action OnTimeoutTriggered { get; private set; }
 
     public FSMProcessMode ProcessMode { get; private set; }
     public FSMLockMode LockMode { get; private set; }
 
-    private readonly HashSet<string> tags = new();
-    private readonly Dictionary<string, object> data = new();
-
     public IReadOnlyCollection<string> Tags => tags;
     public IReadOnlyDictionary<string, object> Data => data;
+
+    private HashSet<string> tags = new();
+    private Dictionary<string, object> data = new();
 
     public State(T id)
     {
@@ -34,16 +34,13 @@ public class State<T> where T : Enum
 
     public Transition<T> AddTransition(T to)
     {
-        if (Transitions.Find(t => t.To.Equals(to)) != null)
-            return null;
-
         Transition<T> transition = new Transition<T>(Id, to);
         Transitions.Add(transition);
 
         return transition;
     }
 
-    public bool RemoveTransitions(T to)
+    public bool RemoveTransition(T to)
     {
         int removed = 0;
         removed = Transitions.RemoveAll(t => t.To.Equals(to));
@@ -51,7 +48,7 @@ public class State<T> where T : Enum
         return removed > 0;
     }
 
-    public State<T> OnUpdate(Action<double> update)
+    public State<T> OnUpdate(Action<float> update)
     {
         Update = update;
         return this;
@@ -71,25 +68,25 @@ public class State<T> where T : Enum
 
     public State<T> OnTimeout(Action method)
     {
-        Callback = method;
+        OnTimeoutTriggered = method;
         return this;
     }
 
-    public State<T> SetMinTime(float value)
+    public State<T> SetMinTime(float duration)
     {
-        MinTime = Math.Max(0f, value);
+        MinTime = MathF.Max(0f, duration);
         return this;
     }
 
-    public State<T> SetTimeout(float value)
+    public State<T> SetTimeout(float duration)
     {
-        Timeout = value;
+        Timeout = duration;
         return this;
     }
 
-    public State<T> SetRestart(T id)
+    public State<T> SetTimeoutId(T id)
     {
-        RestartId = id;
+        TimeoutTargetId = id;
         return this;
     }
 
@@ -105,7 +102,7 @@ public class State<T> where T : Enum
         return this;
     }
 
-    public State<T> UnLock()
+    public State<T> Unlock()
     {
         LockMode = FSMLockMode.None;
         return this;
@@ -118,12 +115,22 @@ public class State<T> where T : Enum
         return this;
     }
 
-    public State<T> RegisterData(string id, object value)
+    public State<T> SetData(string id, object value)
     {
-        if (data.ContainsKey(id))
-            return this;
         data[id] = value;
         return this;
+    }
+
+    public bool TryGetData<TData>(string id, out TData value)
+    {
+        if (data.TryGetValue(id, out var result) && result is TData castValue)
+        {
+            value = castValue;
+            return true;
+        }
+        
+        value = default;
+        return false;
     }
 
     public bool RemoveData(string id)
@@ -131,22 +138,11 @@ public class State<T> where T : Enum
         return data.Remove(id);
     }
 
-    public bool TryGetData<TData>(string id, out TData value)
-    {
-        if (data.TryGetValue(id, out var obj) && obj is TData typed)
-        {
-            value = typed;
-            return true;
-        }
-        value = default;
-        return false;
-    }
+   public bool IsLocked() => LockMode != FSMLockMode.None;
+   public bool IsFullyLocked() => LockMode == FSMLockMode.Full;
+   public bool TransitionBlocked() => LockMode == FSMLockMode.Transition;
 
-    public bool IsLocked() => LockMode != FSMLockMode.None;
-    public bool IsFullyLocked() => LockMode == FSMLockMode.Full;
-    public bool TransitionBlocked() => LockMode == FSMLockMode.Transition;
+   public bool HasData(string id) => data.ContainsKey(id);
+   public bool HasData(object dataValue) => data.ContainsValue(dataValue);
 
-    public bool HasTag(string tag) => tags.Contains(tag);
-    public bool HasData(string id) => data.ContainsKey(id);
-    public bool HasData(object value) => data.ContainsValue(value);
 }
