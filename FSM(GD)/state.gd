@@ -1,7 +1,7 @@
 class_name State
 
 var id: int
-var restart_id: int
+var timeout_id: int
 
 var transitions: Array[Transition] = []
 
@@ -23,8 +23,6 @@ func _init(new_id: int) -> void:
 	id = new_id
 
 func add_transition(to: int) -> Transition:
-	if transitions.find_custom(func(t): return t.to == to) != -1:
-		return null
 	var transition: Transition = Transition.new(id, to)
 	transitions.append(transition)
 	return transition
@@ -35,6 +33,9 @@ func remove_transition(to: int) -> bool:
 			transitions.erase(t)
 			return true
 	return false
+
+func has_transition(to: int) -> bool:
+	return transitions.find_custom(func(t: Transition) -> bool: return t.to == to) != -1
 
 func on_update(method: Callable) -> State:
 	update = method
@@ -60,8 +61,8 @@ func set_timeout(duration: float) -> State:
 	timeout = duration
 	return self
 
-func set_restart(to_id: int) -> State:
-	restart_id = to_id
+func set_timeout_id(to_id: int) -> State:
+	timeout_id = to_id
 	return self
 
 func set_process_mode(mode: StateMachine.ProcessMode) -> State:
@@ -87,8 +88,8 @@ func set_data(key: String, value: Variant) -> State:
 func get_data(key: String) -> Variant:
 	if !data.has(key):
 		push_error("Data with key: %s, does not exist" % key)
-		return false
-	return false
+		return null  # Should return null, not false
+	return data[key]  # BUG FIX: was returning false!
 
 func remove_data(key: String) -> bool:
 	return data.erase(key)
@@ -108,6 +109,14 @@ func has_data(key: String) -> bool:
 func has_data_with_value(value: Variant) -> bool:
 	return data.values().find_custom(func(d): return d == value) != -1
 
+func get_process_mode() -> StateMachine.ProcessMode:
+	return process_mode
 
+func has_transitions() -> bool:
+	return !transitions.is_empty()
 
-
+func get_transition_to(to_id: int) -> Transition:
+	for t: Transition in transitions:
+		if t.to == to_id:
+			return t
+	return null
