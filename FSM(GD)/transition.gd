@@ -68,9 +68,3 @@ func break_instant() -> Transition:
 static func compare(a: Transition, b: Transition) -> int:
 	var priority_compare: int = b.priority - a.priority
 	return priority_compare if priority_compare != 0 else (a.insersion_index - b.insersion_index)
-
-
-
-
-
-
