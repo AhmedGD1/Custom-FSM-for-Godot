@@ -4,7 +4,7 @@ using System.Linq;
 
 namespace Godot.FSM;
 
-public class StateMachine<T> where T : Enum
+public class StateMachine<T> : IDisposable where T : Enum
 {
     public event Action<T, T> StateChanged;
     public event Action<T, T> TransitionTriggered;
@@ -12,7 +12,7 @@ public class StateMachine<T> where T : Enum
     public event Action<T> StateTimeout;
 
     private const int MaxQueuedTransitions = 20;
-    private const string DataPerTransition = "__transition_data__";
+    private const string DataPerTransition = "45u349gng66__transition_data__8934u89grg85";
 
     private Dictionary<T, State<T>> states = new();
     private Dictionary<string, object> globalData = new();
@@ -21,7 +21,7 @@ public class StateMachine<T> where T : Enum
     private List<Transition<T>> cachedSortedTransitions = new();
     private Queue<T> pendingTransitions = new();
 
-    private Dictionary<string, List<Action>> eventListeneres = new();
+    private Dictionary<string, List<Action>> eventListeners = new();
     private Queue<string> pendingEvents = new();
 
     private State<T> currentState;
@@ -34,7 +34,7 @@ public class StateMachine<T> where T : Enum
     private bool paused;
     private bool isTransitioning;
     private bool isProcessingEvent;
-    private bool transitionDirty = true;
+    private bool disposed = false;
 
     private float stateTime;
     private float lastStateTime;
@@ -46,11 +46,23 @@ public class StateMachine<T> where T : Enum
         this.logger = logger ?? new DefaultLogger();
     }
 
+    public void Dispose()
+    {
+        if (disposed) return;
+
+        ClearEventListeners();
+        ClearTransitions();
+        ClearGlobalTransitions();
+        states.Clear();
+
+        disposed = true;
+    }
+
     public State<T> AddState(T id)
     {
         if (states.TryGetValue(id, out State<T> value))
         {
-            logger.LogError($"State With Id: {id}, Already Exists");
+            logger.LogWarning($"State With Id: {id}, Already Exists");
             return value;
         }
 
@@ -60,7 +72,8 @@ public class StateMachine<T> where T : Enum
         if (!initialized)
             SetInitialId(id);
 
-        state.SetTimeoutId(initialId);
+        if (initialized && states.ContainsKey(initialId))
+            state.SetTimeoutId(initialId);
         return state;
     }
 
@@ -78,38 +91,48 @@ public class StateMachine<T> where T : Enum
             return false;
         }
 
+        // Can't remove the only state
+        if (states.Count == 1)
+        {
+            logger.LogError("Cannot remove the last state in the state machine");
+            return false;
+        }
+
+        // If removing the initial state, pick a new one
         if (initialId.Equals(id))
         {
-            var newId = states.Keys.ToArray().First();
+            // Find first state that isn't the one being removed
+            var newId = states.Keys.FirstOrDefault(k => !k.Equals(id));
             SetInitialId(newId);
         }
         
-        if (currentState.Id.Equals(state.Id))
+        // If it's the current state, reset
+        if (currentState != null && currentState.Id.Equals(state.Id))
         {
             Reset();
         }
 
+        // Remove all transitions pointing to this state
         foreach (var kvp in states)
             kvp.Value.RemoveTransition(id);
         globalTransitions.RemoveAll(t => t.To.Equals(id));
 
         states.Remove(id);
-
         SortTransitions();
+        
         return true;
     }
-
     public bool Reset()
     {
         if (states.Count == 0)
         {
-            logger.LogError("Can not reset an empty state machine");
+            logger.LogWarning("Can not reset an empty state machine");
             return false;
         }
 
         if (!initialized)
         {
-            logger.LogWarning("State Machine is not initialized. Call SetInitialId() first");
+            logger.LogError("State Machine is not initialized. Call SetInitialId() first");
             return false;
         }
 
@@ -122,28 +145,29 @@ public class StateMachine<T> where T : Enum
 
     public void SetInitialId(T id)
     {
-        if (!states.ContainsKey(id))
+        if (!states.TryGetValue(id, out State<T> value))
         {
             logger.LogError($"State With Id: {id}, does not exist");
             return;
         }
 
-        initialId = id;
         initialized = true;
+        initialId = id;
+        currentState = value;
     }
 
-    public void RestartCurrentState(bool ignoreEnter = false, bool ignoreExit = true)
+    public void RestartCurrentState(bool callEnter = true, bool callExit = false)
     {
-        if (currentState.IsLocked())
+        if (currentState?.IsLocked() ?? true)
         {
             logger.LogWarning("Can not restart current state since it is locked");
             return;
         }
 
-        ResetStateTime();
+        if (callEnter) currentState.Enter?.Invoke();
+        if (callExit) currentState.Exit?.Invoke();
 
-        if (!ignoreEnter) currentState.Enter?.Invoke();
-        if (!ignoreExit) currentState.Exit?.Invoke();
+        ResetStateTime();
     }
 
     public void ResetStateTime()
@@ -154,7 +178,7 @@ public class StateMachine<T> where T : Enum
 
     public bool TryChangeState(T to, Func<bool> condition = null, object data = null)
     {
-        if (!(condition?.Invoke() ?? true))
+        if (!(condition?.Invoke() ?? true) || !MintimeExceeded())
             return false;
         
         if (!states.ContainsKey(to))
@@ -169,7 +193,7 @@ public class StateMachine<T> where T : Enum
 
     public bool TryGoBack()
     {
-        if (!hasPreviousState || !states.ContainsKey(previousId) || currentState.IsLocked())
+        if (!hasPreviousState || !states.ContainsKey(previousId) || (currentState?.IsLocked() ?? true))
             return false;
         
         ChangeStateInternal(previousId);
@@ -194,15 +218,18 @@ public class StateMachine<T> where T : Enum
 
         try
         {
-            bool canExit = !bypassExit && !currentState.IsLocked();
+            bool canExit = !bypassExit && currentState != null && !currentState.IsLocked();
 
             if (canExit)
                 currentState.Exit?.Invoke();
             
             ResetStateTime();
 
-            previousId = currentState.Id;
-            hasPreviousState = true;
+            if (currentState != null)
+            {
+                previousId = currentState.Id;
+                hasPreviousState = true;
+            }
 
             currentState = states[id];
             currentState.Enter?.Invoke();
@@ -247,6 +274,23 @@ public class StateMachine<T> where T : Enum
         return transition;
     }
 
+    public Transition<T> AddResetTransition(T from)
+    {
+        if (!initialized)
+        {
+            logger.LogError("Cannot add reset transition: no initial state set. Call AddState() first.");
+            return null;
+        }
+
+        if (!states.ContainsKey(from))
+        {
+            logger.LogError($"Cannot add reset transition: source state {from} does not exist");
+            return null;
+        }
+
+        return AddTransition(from, initialId);
+    }
+
     public void AddTransitions(T[] from, T to, Predicate<StateMachine<T>> condition)
     {
         if (from == null) 
@@ -257,6 +301,20 @@ public class StateMachine<T> where T : Enum
 
         for (int i = 0; i < from.Length; i++)
             AddTransition(from[i], to)?.SetCondition(condition);
+    }
+
+    public Transition<T> AddGlobalTransition(T to)
+    {
+        if (!states.ContainsKey(to))
+        {
+            logger.LogError("To State Does not exist");
+            return null;
+        }
+
+        var transition = new Transition<T>(default, to);
+        globalTransitions.Add(transition);
+
+        return transition;
     }
 
     public bool RemoveTransition(T from, T to)
@@ -270,7 +328,7 @@ public class StateMachine<T> where T : Enum
         int removed = state.Transitions.RemoveAll(t => t.To.Equals(to));
 
         if (removed == 0)
-            logger.LogError($"No Transition Was Found Between: {from} -> {to}");
+            logger.LogWarning($"No Transition Was Found Between: {from} -> {to}");
         
         SortTransitions();
         return removed > 0;
@@ -317,7 +375,13 @@ public class StateMachine<T> where T : Enum
 
     public void SortTransitions()
     {
-        transitionDirty = true;
+        cachedSortedTransitions.Clear();
+
+        if (currentState != null)
+            cachedSortedTransitions.AddRange(currentState.Transitions);
+        
+        cachedSortedTransitions.AddRange(globalTransitions);
+        cachedSortedTransitions.Sort(Transition<T>.Compare);
     }
 
     public void SendEvent(string eventName)
@@ -339,37 +403,42 @@ public class StateMachine<T> where T : Enum
             return;
         }
 
-        if (!eventListeneres.ContainsKey(eventName))
-            eventListeneres[eventName] = new();
-        eventListeneres[eventName].Add(callback);
+        if (!eventListeners.ContainsKey(eventName))
+            eventListeners[eventName] = new();
+        eventListeners[eventName].Add(callback);
     }
 
     public bool RemoveEventListener(string eventName, Action callback)
     {
-        if (eventListeneres.TryGetValue(eventName, out var listener))
+        if (eventListeners.TryGetValue(eventName, out var listener))
         {
             listener.Remove(callback);
 
             if (listener.Count == 0)
-                eventListeneres.Remove(eventName);
+                eventListeners.Remove(eventName);
             return true;
         }
         return false;
     }
 
+    public void ClearEventListeners()
+    {
+        eventListeners.Clear();
+    }
+
     private void ProcessEvents()
     {
-        if (pendingEvents.Count > 0)
+        while (pendingEvents.Count > 0)
         {
             string eventName = pendingEvents.Dequeue();
 
-            if (eventListeneres.TryGetValue(eventName, out var listener))
+            if (eventListeners.TryGetValue(eventName, out var listener))
             {
                 foreach (var callback in listener)
                     callback?.Invoke();
             }
 
-            if (cachedSortedTransitions.Count > 0)
+            if (cachedSortedTransitions.Count > 0 && !isProcessingEvent)
                 CheckEventTransitions(eventName);
         }
     }
@@ -443,8 +512,6 @@ public class StateMachine<T> where T : Enum
 
         if (currentState.TransitionBlocked())
             return;
-        
-        RebuildTransitionCache();
 
         if (cachedSortedTransitions.Count > 0)
             CheckTransitionLoop();
@@ -496,19 +563,6 @@ public class StateMachine<T> where T : Enum
         }
     }
 
-    private void RebuildTransitionCache()
-    {
-        if (!transitionDirty)
-            return;
-        
-        cachedSortedTransitions.Clear();
-        cachedSortedTransitions.AddRange(currentState.Transitions);
-        cachedSortedTransitions.AddRange(globalTransitions);
-        cachedSortedTransitions.Sort(Transition<T>.Compare);
-
-        transitionDirty = false;
-    }
-
     public void SetData(string id, object value)
     {
         if (string.IsNullOrEmpty(id))
@@ -553,7 +607,14 @@ public class StateMachine<T> where T : Enum
 
     public float GetLastStateTime() => lastStateTime;
     public float GetStateTime() => stateTime;
-    public float GetMinStateTime() => currentState?.MinTime ?? -1f;
+
+    public float GetMinStateTime()
+    {
+        if (currentState == null)
+            throw new NullReferenceException();
+        return currentState.MinTime;
+    }
+
     public float GetRemainingTime() => 
         currentState != null && currentState.Timeout > 0f ? Math.Max(0f, currentState.Timeout - stateTime) : -1f;
     
@@ -562,7 +623,7 @@ public class StateMachine<T> where T : Enum
         return states.TryGetValue(id, out var state) ? state : null;
     }
 
-    public State<T> GetState(string tag)
+    public State<T> GetStateByTag(string tag)
     {
         foreach (var kvp in states)
         {
@@ -574,15 +635,15 @@ public class StateMachine<T> where T : Enum
 
     public float GetTimeoutProgress()
     {
-        if (currentState.Timeout <= 0f)
+        if (currentState == null || currentState.Timeout <= 0f)
             return -1f;
         return Math.Clamp(stateTime / currentState.Timeout, 0f, 1f);
     }
 
-    public T GetCurrentId() => currentState.Id;
-    public T GetPreviousId() => previousId;
+    public T GetCurrentId() => currentState != null ? currentState.Id : default;
+    public T GetPreviousId() => hasPreviousState ? previousId : default;
 
-    public bool MintimeExceeded() => stateTime > currentState.MinTime;
+    public bool MintimeExceeded() => currentState != null && stateTime > currentState.MinTime;
 
     public bool HasTransition(T from, T to)
     {
@@ -596,19 +657,46 @@ public class StateMachine<T> where T : Enum
         return globalTransitions.Find(t => t.To.Equals(to)) != null;
     }
 
+    public bool HasAnyGlobalTransitions() => globalTransitions.Count > 0;
+
     public bool IsInStateWithTag(string tag)
     {
-        return currentState.Tags.Contains(tag);
+        return currentState?.Tags.Contains(tag) ?? false;
     }
 
     public bool IsCurrentState(T id)
     {
-        return currentState.Id.Equals(id);
+        return currentState != null && currentState.Id.Equals(id);
     }
 
     public bool IsPreviousState(T id)
     {
         return hasPreviousState && previousId.Equals(id);
+    }
+
+    public List<State<T>> GetStatesWithTag(string tag)
+    {
+        List<State<T>> result = new();
+
+        foreach (var kvp in states)
+        {
+            if (kvp.Value.Tags.Contains(tag))
+                result.Add(kvp.Value);
+        }
+
+        return result;
+    }
+
+    public List<Transition<T>> GetAvailableTransitions()
+    {
+        if (currentState == null)
+            return null;
+        return currentState.Transitions;
+    }
+
+    public bool IsValid()
+    {
+        return currentState != null;
     }
 }
 
