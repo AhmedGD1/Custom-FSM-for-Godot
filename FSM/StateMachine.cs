@@ -559,6 +559,8 @@ public class StateMachine<T> : IDisposable where T : Enum
                 ChangeStateInternal(transition.To);
                 transition.OnTriggered?.Invoke();
                 TransitionTriggered?.Invoke(transition.From, transition.To);
+
+                return;
             }
         }
     }
@@ -642,6 +644,8 @@ public class StateMachine<T> : IDisposable where T : Enum
 
     public T GetCurrentId() => currentState != null ? currentState.Id : default;
     public T GetPreviousId() => hasPreviousState ? previousId : default;
+
+    public string GetCurrentStateName() => currentState?.Id.ToString() ?? "Null";
 
     public bool MintimeExceeded() => currentState != null && stateTime > currentState.MinTime;
 
