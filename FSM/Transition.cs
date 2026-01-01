@@ -11,8 +11,22 @@ public class Transition<T> where T : Enum
     public T From { get; private set; }
     public T To { get; private set; }
 
-    public Predicate<StateMachine<T>> Condition { get; private set; }
+    /// <summary>
+    /// Guard: Pre-condition check evaluated FIRST, before time requirements.
+    /// Use for early rejection (e.g., "is player alive?", "is feature unlocked?")
+    /// Return FALSE to prevent this transition from being considered at all.
+    /// Guards are checked in both regular and event-based transitions.
+    /// </summary>
     public Predicate<StateMachine<T>> Guard { get; private set; }
+
+    /// <summary>
+    /// Condition: Main transition trigger evaluated AFTER guard and time requirements.
+    /// Use for the actual transition logic (e.g., "is health < 20?", "is enemy visible?")
+    /// Return TRUE to trigger the transition.
+    /// Only used in regular transitions (not event-based transitions).
+    /// </summary>
+    public Predicate<StateMachine<T>> Condition { get; private set; }
+
     public Action OnTriggered { get; private set; }
 
     public string EventName { get; private set; }
