@@ -21,11 +21,15 @@ public class State<T> where T : Enum
     public FSMProcessMode ProcessMode { get; private set; }
     public FSMLockMode LockMode { get; private set; }
 
+    public Cooldown Cooldown => cooldown;
+
     public IReadOnlyCollection<string> Tags => tags;
     public IReadOnlyDictionary<string, object> Data => data;
 
     private HashSet<string> tags = new();
     private Dictionary<string, object> data = new();
+
+    private readonly Cooldown cooldown = new();
 
     public State(T id)
     {
@@ -138,11 +142,31 @@ public class State<T> where T : Enum
         return data.Remove(id);
     }
 
-   public bool IsLocked() => LockMode != FSMLockMode.None;
-   public bool IsFullyLocked() => LockMode == FSMLockMode.Full;
-   public bool TransitionBlocked() => LockMode == FSMLockMode.Transition;
+    public bool IsLocked() => LockMode != FSMLockMode.None;
+    public bool IsFullyLocked() => LockMode == FSMLockMode.Full;
+    public bool TransitionBlocked() => LockMode == FSMLockMode.Transition;
 
-   public bool HasData(string id) => data.ContainsKey(id);
-   public bool HasData(object dataValue) => data.ContainsValue(dataValue);
+    public bool HasData(string id) => data.ContainsKey(id);
+    public bool HasData(object dataValue) => data.ContainsValue(dataValue);
 
+    public State<T> SetCooldown(float duration)
+    {
+        cooldown.SetDuration(duration);
+        return this;
+    }
+
+    public bool IsOnCooldown()
+    {
+        return cooldown.IsActive;
+    }
+
+    internal void StartCooldown()
+    {
+        cooldown.Start();
+    }
+
+    internal void UpdateCooldown(float delta)
+    {
+        cooldown.Update(delta);
+    }
 }
