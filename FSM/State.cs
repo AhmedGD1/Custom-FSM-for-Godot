@@ -11,7 +11,7 @@ public class State<T> where T : Enum
     public List<Transition<T>> Transitions { get; set; } = new();
 
     public float MinTime { get; private set; }
-    public float Timeout { get; private set; } = 1f;
+    public float Timeout { get; private set; } = -1f;
 
     public Action<float> Update { get; private set; }
     public Action Enter { get; private set; }
