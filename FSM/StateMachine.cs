@@ -14,6 +14,10 @@ public class StateMachine<T> : IDisposable where T : Enum
     private const int MaxQueuedTransitions = 20;
     private const string DataPerTransition = "45u349gng66__transition_data__8934u89grg85";
 
+    public StateHistory<T> StateHistory => history;
+
+    private StateHistory<T> history = new();
+
     private Dictionary<T, State<T>> states = new();
     private Dictionary<string, object> globalData = new();
 
@@ -34,7 +38,7 @@ public class StateMachine<T> : IDisposable where T : Enum
     private bool paused;
     private bool isTransitioning;
     private bool isProcessingEvent;
-    private bool disposed = false;
+    private bool disposed;
 
     private float stateTime;
     private float lastStateTime;
@@ -54,6 +58,7 @@ public class StateMachine<T> : IDisposable where T : Enum
         ClearTransitions();
         ClearGlobalTransitions();
         states.Clear();
+        history.ClearHistory();
 
         disposed = true;
     }
@@ -136,6 +141,7 @@ public class StateMachine<T> : IDisposable where T : Enum
             return false;
         }
 
+        history.ClearHistory();
         ChangeStateInternal(initialId);
         hasPreviousState = false;
         previousId = default;
@@ -191,16 +197,97 @@ public class StateMachine<T> : IDisposable where T : Enum
         return true;
     }
 
-    public bool TryGoBack()
+    public bool GoBack()
     {
-        if (!hasPreviousState || !states.ContainsKey(previousId) || (currentState?.IsLocked() ?? true))
+        return GoBack(1);
+    }
+
+    public bool GoBack(int steps)
+    {
+        if (steps < 1)
+        {
+            logger.LogWarning("GoBack steps must be at least 1");
+            return false;
+        }
+
+        if (currentState?.IsLocked() ?? true)
+        {
+            logger.LogWarning("Cannot go back: current state is locked");
+            return false;
+        }
+
+        if (history.CurrentSize < steps)
+        {
+            logger.LogWarning($"Cannot go back {steps} steps: only {history.CurrentSize} entries in history");
+            return false;
+        }
+
+        int targetIndex = history.CurrentSize - steps;
+        if (targetIndex < 0)
             return false;
         
-        ChangeStateInternal(previousId);
+        var targetEntry = history.GetEntry(targetIndex);
+
+        if (!states.TryGetValue(targetEntry.StateId, out var state))
+        {
+            logger.LogWarning($"Cannot go back: target state {targetEntry.StateId} no longer exists");
+            return false;
+        }
+
+        history.RemoveRange(targetIndex, history.CurrentSize - targetIndex);
+
+        ChangeStateInternal(targetEntry.StateId, bypassHistory: true);
         return true;
     }
 
-    public void ChangeStateInternal(T id, bool bypassExit = false)
+    public bool CanGoBack()
+    {
+        return history.CurrentSize > 0 && !(currentState?.IsLocked() ?? true);
+    }
+
+    public bool CanGoBack(int steps)
+    {
+        return history.CurrentSize >= steps && !(currentState?.IsLocked() ?? true);
+    }
+
+    public T PeekBackState()
+    {
+        return PeekBackState(1);
+    }
+
+    public T PeekBackState(int steps)
+    {
+        if (steps < 1 || history.CurrentSize < steps)
+            return default;
+        
+        int targetIndex = history.CurrentSize - steps;
+        return history.GetEntry(targetIndex).StateId;
+    }
+
+    public int FindInHistory(T stateId)
+    {
+        for (int i = history.CurrentSize - 1; i >= 0; i--)
+        {
+            if (history.GetEntry(i).StateId.Equals(stateId))
+                return history.CurrentSize - i;
+        }
+
+        return -1;
+    }
+
+    public bool GoBackToState(T id)
+    {
+        int steps = FindInHistory(id);
+        if (steps < 0)
+        {
+            logger.LogWarning($"State {id} not found in history");
+            return false;
+        }
+
+        return GoBack(steps);
+    }
+
+    public void ChangeStateInternal(T id, bool bypassExit = false, bool bypassHistory = false)
     {
         if (isTransitioning)
         {
@@ -220,6 +307,9 @@ public class StateMachine<T> : IDisposable where T : Enum
         {
             bool canExit = !bypassExit && currentState != null && !currentState.IsLocked();
 
+            if (history != null && history.IsActive && !bypassHistory && currentState != null)
+                history.CreateNewEntry(currentState.Id, stateTime);
+
             if (canExit)
                 currentState.Exit?.Invoke();
             
@@ -229,6 +319,9 @@ public class StateMachine<T> : IDisposable where T : Enum
             {
                 previousId = currentState.Id;
                 hasPreviousState = true;
+
+                if (!bypassExit) // start cooldown on the state we are leaving;
+                    currentState.StartCooldown();
             }
 
             currentState = states[id];
@@ -465,6 +558,9 @@ public class StateMachine<T> : IDisposable where T : Enum
                 if (transition.EventName != eventName)
                     continue;
                 
+                if (transition.IsOnCooldown())
+                    continue;
+                
                 bool guardPassed = transition.Guard?.Invoke(this) ?? true;
                 
                 float requiredTime = transition.OverrideMinTime > 0f ? transition.OverrideMinTime : currentState.MinTime;
@@ -472,9 +568,13 @@ public class StateMachine<T> : IDisposable where T : Enum
 
                 if (guardPassed && timeRequirementMet)
                 {
+                    if (states.TryGetValue(transition.To, out var targetState) && targetState.IsOnCooldown())
+                        continue;
+                    
+                    transition.StartCooldown();
                     ChangeStateInternal(transition.To);
-                    TransitionTriggered?.Invoke(transition.From, transition.To);
 
+                    TransitionTriggered?.Invoke(transition.From, transition.To);
                     transition.OnTriggered?.Invoke();
                     return;
                 }
@@ -498,6 +598,22 @@ public class StateMachine<T> : IDisposable where T : Enum
 
             CheckTransitions();
         }
+    }
+
+    public void UpdateCooldownTimers(float delta)
+    {
+        history.UpdateElapsedTime(delta);
+
+        currentState?.UpdateCooldown(delta);
+
+        foreach (var kvp in states)
+        {
+            if (kvp.Value != currentState)
+                kvp.Value.UpdateCooldown(delta);
+        }
+        
+        foreach (var transition in cachedSortedTransitions)
+            transition.UpdateCooldown(delta);
     }
 
     private void CheckTransitions()
@@ -539,6 +655,22 @@ public class StateMachine<T> : IDisposable where T : Enum
             return;
         }
 
+        var timeoutTransition = currentState.Transitions.Find(t => t.To.Equals(timeoutId));
+        if (timeoutTransition != null && timeoutTransition.IsOnCooldown())
+        {
+            TimeoutBlocked?.Invoke(currentState.Id);
+            return;
+        }
+
+        if (states.TryGetValue(timeoutId, out var state) && state.IsOnCooldown())
+        {
+            TimeoutBlocked?.Invoke(currentState.Id);
+            return;
+        }
+
+        if (timeoutTransition != null)
+            timeoutTransition.StartCooldown();
+
         currentState.OnTimeoutTriggered?.Invoke();
         StateTimeout?.Invoke(fromId);
         TransitionTriggered?.Invoke(fromId, timeoutId);
@@ -549,6 +681,9 @@ public class StateMachine<T> : IDisposable where T : Enum
     {
         foreach (var transition in cachedSortedTransitions)
         {
+            if (transition.IsOnCooldown())
+                continue;
+
             bool guardPassed = transition.Guard?.Invoke(this) ?? true;
 
             if (!guardPassed)
@@ -561,7 +696,12 @@ public class StateMachine<T> : IDisposable where T : Enum
             
             if (transition.Condition?.Invoke(this) ?? false)
             {
+                if (states.TryGetValue(transition.To, out var targetState) && targetState.IsOnCooldown())
+                    continue;
+
+                transition.StartCooldown();
                 ChangeStateInternal(transition.To);
+
                 transition.OnTriggered?.Invoke();
                 TransitionTriggered?.Invoke(transition.From, transition.To);
 
@@ -703,9 +843,102 @@ public class StateMachine<T> : IDisposable where T : Enum
         return currentState.Transitions;
     }
 
-    public bool IsValid()
+    public bool IsTransitionOnCooldown(T from, T to)
     {
-        return currentState != null;
+        if (!states.TryGetValue(from, out var state))
+        {
+            logger.LogError($"Can't find state with id: {from}");
+            return false;
+        }
+
+        var transition = state.Transitions.Find(t => t.To.Equals(to));
+
+        if (transition == null)
+        {
+            logger.LogError("Transition Does not exist");
+            return false;
+        }
+
+        return transition.IsOnCooldown();
+    }
+
+    public void ResetTransitionCooldown(T from, T to)
+    {
+        if (!states.TryGetValue(from, out var state))
+        {
+            logger.LogError($"Can't find state with id: {from}");
+            return;
+        }
+
+        var transition = state.Transitions.Find(t => t.To.Equals(to));
+
+        if (transition == null)
+        {
+            logger.LogError("Transition Does not exist");
+            return;
+        }
+
+        transition.Cooldown.Reset();
+    }
+
+    public bool IsStateOnCooldown(T id)
+    {
+        if (!states.TryGetValue(id, out var state))
+        {
+            logger.LogError($"Can't find state with id: {id}");
+            return false;
+        }
+
+        return state.IsOnCooldown();
+    }
+
+    public void ResetStateCooldown(T id)
+    {
+        if (!states.TryGetValue(id, out var state))
+        {
+            logger.LogError($"Can't find state with id: {id}");
+            return;
+        }   
+
+        state.Cooldown.Reset();
+    }
+
+    public void ResetAllCooldowns()
+    {
+        foreach (var kvp in states)
+        {
+            kvp.Value.Cooldown.Reset();
+
+            foreach (var transition in kvp.Value.Transitions)
+                transition.Cooldown.Reset();
+        }
+
+        foreach (var transition in globalTransitions)
+            transition.Cooldown.Reset();
+    }
+
+    public int GetActiveCooldownCount()
+    {
+        int count = 0;
+
+        foreach (var kvp in states)
+        {
+            if (kvp.Value.IsOnCooldown())
+                count++;
+            
+            foreach (var transition in kvp.Value.Transitions)
+            {
+                if (transition.IsOnCooldown())
+                    count++;
+            }
+        }
+
+        return count;
+    }
+
+    public void SetHistoryActive(bool active)
+    {
+        history.SetActive(active);
     }
 }
 
