@@ -291,7 +291,7 @@ public class StateMachine<T> : IDisposable where T : Enum
         return AddTransition(from, initialId);
     }
 
-    public Transition<T> AddRestartTransition(T id)
+    public Transition<T> AddSelfTransition(T id)
     {
         return AddTransition(id, id);
     }
