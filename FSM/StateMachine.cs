@@ -291,6 +291,11 @@ public class StateMachine<T> : IDisposable where T : Enum
         return AddTransition(from, initialId);
     }
 
+    public Transition<T> AddLoopedTransition(T id)
+    {
+        return AddTransition(id, id);
+    }
+
     public void AddTransitions(T[] from, T to, Predicate<StateMachine<T>> condition)
     {
         if (from == null) 
