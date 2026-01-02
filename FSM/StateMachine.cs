@@ -306,8 +306,9 @@ public class StateMachine<T> : IDisposable where T : Enum
         try
         {
             bool canExit = !bypassExit && currentState != null && !currentState.IsLocked();
+            bool recordHistory = history.IsActive && !bypassHistory && currentState != null;
 
-            if (history != null && history.IsActive && !bypassHistory && currentState != null)
+            if (recordHistory)
                 history.CreateNewEntry(currentState.Id, stateTime);
 
             if (canExit)
