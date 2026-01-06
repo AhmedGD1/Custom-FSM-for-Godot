@@ -11,8 +11,8 @@ public class StateMachine<T> : IDisposable where T : Enum
     public event Action<T> TimeoutBlocked;
     public event Action<T> StateTimeout;
 
-    private const int MaxQueuedTransitions = 20;
-    private const string DataPerTransition = "45u349gng66__transition_data__8934u89grg85";
+    private const int MaxTransitionQueueSize = 20;
+    private const string DataPerTransition = "45u349gng668934u89grg85";
 
     public StateHistory<T> StateHistory => history;
 
@@ -39,11 +39,14 @@ public class StateMachine<T> : IDisposable where T : Enum
     private bool isTransitioning;
     private bool isProcessingEvent;
     private bool disposed;
+    private bool started;
 
     private float stateTime;
     private float lastStateTime;
 
     private ILogger logger;
+
+    private FSMProcessMode timersProcessMode = FSMProcessMode.Idle;
 
     public StateMachine(ILogger logger = null)
     {
@@ -61,6 +64,11 @@ public class StateMachine<T> : IDisposable where T : Enum
         history.ClearHistory();
 
         disposed = true;
+    }
+
+    public void SetCooldownTimersProcessMode(FSMProcessMode mode)
+    {
+        timersProcessMode = mode;
     }
 
     public State<T> AddState(T id)
@@ -85,7 +93,8 @@ public class StateMachine<T> : IDisposable where T : Enum
     public void Start()
     {
         if (initialized)
-            ChangeStateInternal(initialId, bypassExit: true);
+            PerformTransition(initialId, bypassExit: true);
+        started = true;
     }
 
     public bool RemoveState(T id)
@@ -142,7 +151,7 @@ public class StateMachine<T> : IDisposable where T : Enum
         }
 
         history.ClearHistory();
-        ChangeStateInternal(initialId);
+        PerformTransition(initialId);
         hasPreviousState = false;
         previousId = default;
 
@@ -182,9 +191,9 @@ public class StateMachine<T> : IDisposable where T : Enum
         stateTime = 0f;
     }
 
-    public bool TryChangeState(T to, Func<bool> condition = null, object data = null)
+    public bool TryTransitionTo(T to, Func<bool> condition = null, object data = null)
     {
-        if (!(condition?.Invoke() ?? true) || !MintimeExceeded())
+        if (!(condition?.Invoke() ?? true) || !MinTimeExceeded())
             return false;
         
         if (!states.ContainsKey(to))
@@ -193,7 +202,7 @@ public class StateMachine<T> : IDisposable where T : Enum
         if (data != null)
             SetData(DataPerTransition, data);
         
-        ChangeStateInternal(to);
+        PerformTransition(to);
         return true;
     }
 
@@ -236,7 +245,7 @@ public class StateMachine<T> : IDisposable where T : Enum
 
         history.RemoveRange(targetIndex, history.CurrentSize - targetIndex);
 
-        ChangeStateInternal(targetEntry.StateId, bypassHistory: true);
+        PerformTransition(targetEntry.StateId, bypassHistory: true);
         return true;
     }
 
@@ -287,13 +296,13 @@ public class StateMachine<T> : IDisposable where T : Enum
         return GoBack(steps);
     }
 
-    public void ChangeStateInternal(T id, bool bypassExit = false, bool bypassHistory = false)
+    public void PerformTransition(T id, bool bypassExit = false, bool bypassHistory = false)
     {
         if (isTransitioning)
         {
-            if (pendingTransitions.Count >= MaxQueuedTransitions)
+            if (pendingTransitions.Count >= MaxTransitionQueueSize)
             {
-                logger.LogError($"Too many queued transitions ({MaxQueuedTransitions})! Possible infinite loop?");
+                logger.LogError($"Too many queued transitions ({MaxTransitionQueueSize})! Possible infinite loop?");
                 return;
             }
 
@@ -337,7 +346,7 @@ public class StateMachine<T> : IDisposable where T : Enum
             {
                 var nextId = pendingTransitions.Dequeue();
                 isTransitioning = false;
-                ChangeStateInternal(nextId);
+                PerformTransition(nextId);
                 isTransitioning = true;
             }
         }
@@ -483,7 +492,7 @@ public class StateMachine<T> : IDisposable where T : Enum
         cachedSortedTransitions.Sort(Transition<T>.Compare);
     }
 
-    public void SendEvent(string eventName)
+    public void TriggerEvent(string eventName)
     {
         if (string.IsNullOrEmpty(eventName))
         {
@@ -573,7 +582,7 @@ public class StateMachine<T> : IDisposable where T : Enum
                         continue;
                     
                     transition.StartCooldown();
-                    ChangeStateInternal(transition.To);
+                    PerformTransition(transition.To);
 
                     TransitionTriggered?.Invoke(transition.From, transition.To);
                     transition.OnTriggered?.Invoke();
@@ -587,10 +596,29 @@ public class StateMachine<T> : IDisposable where T : Enum
         }
     }
 
-    public void Process(FSMProcessMode mode, float delta)
+    public void UpdateIdle(float delta)
     {
+        Process(FSMProcessMode.Idle, delta);
+    }
+
+    public void UpdateFixed(float delta)
+    {
+        Process(FSMProcessMode.Fixed, delta);
+    }
+
+    private void Process(FSMProcessMode mode, float delta)
+    {
+        if (!started)
+        {
+            logger.LogError("State Machine hasn't started yet. Make sure to call The Start() method first");
+            return;
+        }
+
         if (paused || currentState == null)
             return;
+
+        if (timersProcessMode == mode)
+            UpdateCooldownTimers(delta);
 
         if (currentState.ProcessMode == mode)
         {
@@ -601,7 +629,7 @@ public class StateMachine<T> : IDisposable where T : Enum
         }
     }
 
-    public void UpdateCooldownTimers(float delta)
+    private void UpdateCooldownTimers(float delta)
     {
         history.UpdateElapsedTime(delta);
 
@@ -675,7 +703,7 @@ public class StateMachine<T> : IDisposable where T : Enum
         currentState.OnTimeoutTriggered?.Invoke();
         StateTimeout?.Invoke(fromId);
         TransitionTriggered?.Invoke(fromId, timeoutId);
-        ChangeStateInternal(timeoutId);
+        PerformTransition(timeoutId);
     }
 
     private void CheckTransitionLoop()
@@ -701,7 +729,7 @@ public class StateMachine<T> : IDisposable where T : Enum
                     continue;
 
                 transition.StartCooldown();
-                ChangeStateInternal(transition.To);
+                PerformTransition(transition.To);
 
                 transition.OnTriggered?.Invoke();
                 TransitionTriggered?.Invoke(transition.From, transition.To);
@@ -771,7 +799,7 @@ public class StateMachine<T> : IDisposable where T : Enum
         return states.TryGetValue(id, out var state) ? state : null;
     }
 
-    public State<T> GetStateByTag(string tag)
+    public State<T> GetStateWithTag(string tag)
     {
         foreach (var kvp in states)
         {
@@ -793,7 +821,7 @@ public class StateMachine<T> : IDisposable where T : Enum
 
     public string GetCurrentStateName() => currentState?.Id.ToString() ?? "Null";
 
-    public bool MintimeExceeded() => currentState != null && stateTime > currentState.MinTime;
+    public bool MinTimeExceeded() => currentState != null && stateTime > currentState.MinTime;
 
     public bool HasTransition(T from, T to)
     {

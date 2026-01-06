@@ -76,13 +76,13 @@ public class State<T> where T : Enum
         return this;
     }
 
-    public State<T> SetMinTime(float duration)
+    public State<T> MinDuration(float duration)
     {
         MinTime = MathF.Max(0f, duration);
         return this;
     }
 
-    public State<T> SetTimeout(float duration)
+    public State<T> TimeoutAfter(float duration)
     {
         Timeout = duration;
         return this;

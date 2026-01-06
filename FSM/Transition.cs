@@ -72,7 +72,7 @@ public class Transition<T> where T : Enum
         return this;
     }
 
-    public Transition<T> SetMinTime(float value)
+    public Transition<T> RequireMinTime(float value)
     {
         OverrideMinTime = value;
         return this;
@@ -84,7 +84,7 @@ public class Transition<T> where T : Enum
         return this;
     }
 
-    public Transition<T> SetMaxPriority()
+    public Transition<T> HighestPriority()
     {
         Priority = int.MaxValue;
         return this;
