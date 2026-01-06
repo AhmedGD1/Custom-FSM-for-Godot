@@ -13,7 +13,7 @@ var enter: Callable
 var exit: Callable
 var callback: Callable
 
-var process_mode: StateMachine.ProcessMode = StateMachine.ProcessMode.PHYSICS
+var process_mode: StateMachine.ProcessMode = StateMachine.ProcessMode.FIXED
 var lock_mode: StateMachine.LockMode = StateMachine.LockMode.NONE
 
 var tags: Array[String] = []

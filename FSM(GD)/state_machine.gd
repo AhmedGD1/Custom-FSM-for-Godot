@@ -1,7 +1,7 @@
 class_name StateMachine
 
 enum ProcessMode { 
-	IDLE, PHYSICS
+	IDLE, FIXED
 }
 
 enum LockMode {
@@ -437,7 +437,7 @@ func update_idle(delta: float) -> void:
 	_process(ProcessMode.IDLE, delta)
 
 func update_fixed(delta: float) -> void:
-	_process(ProcessMode.IDLE, delta)
+	_process(ProcessMode.FIXED, delta)
 
 func _process(mode: StateMachine.ProcessMode, delta: float) -> void:
 	if !_started:
@@ -454,6 +454,7 @@ func _process(mode: StateMachine.ProcessMode, delta: float) -> void:
 		_state_time += delta
 		_safe_call(_current_state.update, delta)
 		_check_transitions()
+		print("ggg")
 
 func _update_cooldown_timers(delta: float) -> void:
 	_history.update_elapsed_time(delta)
