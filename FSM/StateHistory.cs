@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace AhmedGD.FSM;
+namespace Game.FSM;
 
 public class StateHistory<T> where T : Enum
 {

@@ -1,6 +1,6 @@
 using System;
 
-namespace AhmedGD.FSM;
+namespace Game.FSM;
 
 public class Cooldown
 {
