@@ -60,8 +60,7 @@ public partial class Player : CharacterBody2D
             .OnEnter(() => GD.Print("Started Walking"));
 
         // Add transitions with conditions
-        fsm.AddState(PlayerState.Idle)
-            .AddTransition(PlayerState.Walking)
+        fsm.AddTransition(PlayerState.Idle, PlayerState.Walking)
             .SetCondition(sm => Input.IsActionPressed("move_right"));
 
         // Set initial state and start
