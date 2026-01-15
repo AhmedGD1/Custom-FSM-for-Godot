@@ -1,6 +1,6 @@
 # 🎮 Stately
 
-> Elegant hierarchical state machines for Godot C#
+> Elegant State Machine for Godot C#
 
 [![License: Custom](https://img.shields.io/badge/license-Custom-blue.svg)](LICENSE)
 [![Godot 4+](https://img.shields.io/badge/Godot-4%2B-blue)](https://godotengine.org/)
