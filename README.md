@@ -141,7 +141,7 @@ fsm.AddState(PlayerState.Attacking)
 
 **State Features:**
 - `OnEnter()` - Called when entering the state
-- `OnUpdate(delta)` - Called every frame while active (leaf states only)
+- `OnUpdate(delta)` - Called every frame while active
 - `OnExit()` - Called when leaving the state
 - `MinDuration()` - Minimum time before allowing transitions
 - `TimeoutAfter()` - Automatic transition after duration
