@@ -1,0 +1,57 @@
+Finite State Machine Library License
+
+Copyright (c) 2025 [Your Name]
+
+TERMS AND CONDITIONS FOR USE
+
+1. GRANT OF LICENSE
+   Permission is hereby granted, free of charge, to any person obtaining a copy
+   of this software and associated documentation files (the "Software"), to use,
+   copy, modify, merge, and distribute the Software in personal and commercial
+   projects, subject to the following conditions:
+
+2. PERMITTED USES
+   You MAY:
+   - Use the Software freely in any project (personal or commercial)
+   - Modify the Software for your own use
+   - Distribute your projects that include the Software
+   - Include the Software in shipped games and applications
+
+3. ATTRIBUTION REQUIREMENTS
+
+   3.1 General Use:
+       Attribution is NOT required for general use in your projects.
+   
+   3.2 Public Advertisement:
+       If you publicly advertise or promote that your project uses this Software
+       (in marketing materials, store descriptions, social media, press releases,
+       websites, etc.), you MUST include credit:
+       
+       "Uses [Library Name] by [Your Name]"
+       
+       OR link to the original repository: [GitHub URL]
+
+4. PROHIBITED ACTIONS
+   You MAY NOT:
+   - Claim authorship or ownership of the Software
+   - Remove or modify copyright notices in the source code
+   - Present the Software as your own creation
+   - Redistribute the Software as a standalone library under a different name
+     claiming it as your own work
+
+5. NO WARRANTY
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+   AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+   SOFTWARE.
+
+6. GOOD FAITH
+   This license operates on good faith. The goal is to allow free use while
+   ensuring proper credit when the Software is used as a promotional feature.
+
+---
+
+For questions, contact: [Your Email/GitHub URL]
