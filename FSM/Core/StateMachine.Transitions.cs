@@ -5,7 +5,7 @@ namespace FiniteStateMachine;
 
 public partial class StateMachine<T>
 {
-    public Transition<T> ConfigureTransition(T from, T to, Action<Transition<T>> configure)
+    public Transition<T> ConfigTransition(T from, T to, Action<Transition<T>> configure)
     {
         if (configure == null)
         {
@@ -30,7 +30,7 @@ public partial class StateMachine<T>
         return transition;
     }
 
-    public Transition<T> ConfigureGlobalTransition(T to, Action<Transition<T>> configure)
+    public Transition<T> ConfigGlobalTransition(T to, Action<Transition<T>> configure)
     {
         if (configure == null)
         {
