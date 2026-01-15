@@ -2,7 +2,7 @@ using System;
 using System.Linq;
 using System.Collections.Generic;
 
-namespace FiniteStateMachine;
+namespace Stately;
 
 public partial class StateMachine<T>
 {
@@ -360,5 +360,4 @@ public partial class StateMachine<T>
         return errors.Count == 0;
     }
 }
-
 

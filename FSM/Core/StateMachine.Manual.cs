@@ -1,6 +1,6 @@
 using System;
 
-namespace FiniteStateMachine;
+namespace Stately;
 
 public partial class StateMachine<T>
 {
