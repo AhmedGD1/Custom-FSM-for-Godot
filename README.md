@@ -1,6 +1,14 @@
-# 🎮 Finite State Machine for Godot (C#)
+# 🎮 Stately
 
-A powerful, feature-rich Finite State Machine library for Godot 4 C# projects. This FSM provides an elegant and type-safe way to manage complex state-driven behaviors with support for hierarchical states, transitions, events, timeouts, cooldowns, history tracking, and much more.
+> Elegant hierarchical state machines for Godot C#
+
+[![License: Custom](https://img.shields.io/badge/license-Custom-blue.svg)](LICENSE)
+[![Godot 4+](https://img.shields.io/badge/Godot-4%2B-blue)](https://godotengine.org/)
+
+A powerful, type-safe finite state machine library with full support for 
+hierarchical states, smart transitions, and comprehensive manual control.
+
+[Features](#features) • [Quick Start](#quick-start) • [Documentation](#documentation)
 
 ## ✨ Features
 
